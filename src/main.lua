@@ -27,6 +27,14 @@ public.config = config
 -- All imported files attach to Core and read from Core.Discovery.
 Core = {}
 
+--- Print a warning to the console when DebugMode is enabled.
+--- Use for schema validation, missing fields, and module author diagnostics.
+function Core.warn(msg)
+    if config.DebugMode then
+        print("[adamant] " .. msg)
+    end
+end
+
 -- =============================================================================
 -- LIFECYCLE
 -- =============================================================================
@@ -40,10 +48,13 @@ local function on_ready()
     -- 2. HUD system (hash + mod mark)
     import 'hud.lua'
 
-    -- 3. UI system
+    -- 3. UI theme (colors, layout constants, helpers)
+    import 'ui_theme.lua'
+
+    -- 4. UI system
     import 'ui.lua'
 
-    -- 4. Set initial mod marker
+    -- 5. Set initial mod marker
     if config.ModEnabled then
         Core.SetModMarker(true)
     end
@@ -53,6 +64,7 @@ local function on_reload()
     import_as_fallback(rom.game)
     import 'discovery.lua'
     import 'hud.lua'
+    import 'ui_theme.lua'
     import 'ui.lua'
 end
 

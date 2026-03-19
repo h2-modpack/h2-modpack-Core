@@ -5,10 +5,10 @@
 -- Reads module states from their individual configs via Discovery.
 
 local Discovery = Core.Discovery
+local lib = rom.mods['adamant-Modpack_Lib']
 
 local BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 local CHUNK_BITS = 30
-local HAMMER_BITS = 5
 
 -- =============================================================================
 -- BASE62 ENCODING / DECODING
@@ -51,19 +51,9 @@ end
 -- =============================================================================
 
 --- Compute config hash from a staging table or from live module configs.
---- @param source table|nil If provided, reads source.modules[id] for bools, source.FirstHammers for hammers. Otherwise reads Chalk configs.
+--- @param source table|nil If provided, reads source.modules[id] for bools. Otherwise reads Chalk configs.
 --- @return string fullHash, string boolHash
 local function GetConfigHash(source)
-    local hammerMod = Discovery.getHammerModule()
-    local hammers
-    if source then
-        hammers = source.FirstHammers or {}
-    elseif hammerMod then
-        hammers = hammerMod.config.FirstHammers or {}
-    else
-        hammers = {}
-    end
-
     local chunks = {}
     local chunk = 0
     local bit = 0
@@ -83,8 +73,6 @@ local function GetConfigHash(source)
     end
 
     -- Boolean flags in discovery order (category order, then module order within)
-    local totalModules = 0
-    local enabledCount = 0
     for _, cat in ipairs(Discovery.categories) do
         local modules = Discovery.byCategory[cat.key] or {}
         for _, m in ipairs(modules) do
@@ -94,12 +82,9 @@ local function GetConfigHash(source)
             else
                 enabled = Discovery.isModuleEnabled(m)
             end
-            totalModules = totalModules + 1
-            if enabled then enabledCount = enabledCount + 1 end
             addBits(enabled and 1 or 0, 1)
         end
     end
-    print("[Hud] GetConfigHash: " .. totalModules .. " modules, " .. enabledCount .. " enabled")
 
     -- Flush partial bool chunk
     if bit > 0 then
@@ -109,23 +94,77 @@ local function GetConfigHash(source)
     end
     local boolHash = PackChunks(chunks, 0, 0)
 
-    -- Hammer indices
-    if hammerMod then
-        local hammerData = hammerMod.hammerData
-        local aspectDrawOrder = hammerMod.aspectDrawOrder
-        for _, aspectName in ipairs(aspectDrawOrder) do
-            local data = hammerData[aspectName]
-            local selected = hammers[aspectName] or ""
-            local idx = 0
-            if data then
-                for i, val in ipairs(data.values) do
-                    if val == selected then
-                        idx = i - 1
-                        break
+    -- Inline option payloads (in discovery order, only modules with options)
+    for _, m in ipairs(Discovery.modulesWithOptions) do
+        for _, opt in ipairs(m.options) do
+            if opt.type == "checkbox" then
+                local current
+                if source then
+                    current = source.options and source.options[m.id]
+                        and source.options[m.id][opt.configKey]
+                end
+                if current == nil then
+                    current = Discovery.getOptionValue(m, opt.configKey)
+                end
+                addBits(current and 1 or 0, 1)
+            elseif opt.type == "dropdown" or opt.type == "radio" then
+                local bits = opt.bits or lib.bitsRequired(#opt.values)
+                local current
+                if source then
+                    current = source.options and source.options[m.id]
+                        and source.options[m.id][opt.configKey]
+                end
+                if current == nil then
+                    current = Discovery.getOptionValue(m, opt.configKey)
+                end
+                current = current or opt.default or ""
+                local idx = 0
+                for i, v in ipairs(opt.values) do
+                    if v == current then idx = i - 1; break end
+                end
+                addBits(idx, bits)
+            end
+        end
+    end
+
+    -- Special module payloads (in discovery order, driven by stateSchema)
+    for _, special in ipairs(Discovery.specials) do
+        local schema = special.stateSchema
+        if schema then
+            local cfg = special.mod.config
+            for _, field in ipairs(schema) do
+                local bits = lib.resolveBits(field)
+                local key = field.configKey
+                local current
+                if type(key) == "table" then
+                    local tbl = cfg
+                    for i = 1, #key - 1 do
+                        tbl = tbl[key[i]]
+                        if not tbl then
+                            Core.warn("stateSchema: config path missing at '" .. key[i] .. "' in " .. special.modName)
+                            break
+                        end
                     end
+                    current = tbl and tbl[key[#key]]
+                else
+                    current = cfg[key]
+                end
+                if field.type == "checkbox" then
+                    addBits(current and 1 or 0, 1)
+                elseif field.type == "dropdown" or field.type == "radio" then
+                    if not field.values then
+                        Core.warn("stateSchema: dropdown/radio missing values for '" .. tostring(field.configKey) .. "' in " .. special.modName)
+                    end
+                    current = current or field.default or ""
+                    local idx = 0
+                    for i, v in ipairs(field.values or {}) do
+                        if v == current then idx = i - 1; break end
+                    end
+                    addBits(idx, bits)
+                else
+                    Core.warn("stateSchema: unknown type '" .. tostring(field.type) .. "' in " .. special.modName)
                 end
             end
-            addBits(idx, HAMMER_BITS)
         end
     end
 
@@ -146,14 +185,6 @@ local function ApplyConfigHash(hash)
         table.insert(chunksList, decoded)
     end
     if #chunksList == 0 then return false end
-
-    local hammerMod = Discovery.getHammerModule()
-    local hammers
-    if hammerMod then
-        hammers = hammerMod.config.FirstHammers
-    else
-        hammers = {}
-    end
 
     local chunkIdx = 1
     local chunkVal = chunksList[1]
@@ -193,15 +224,67 @@ local function ApplyConfigHash(hash)
         bit = 0
     end
 
-    -- Hammer indices
-    if hammerMod and chunkIdx <= #chunksList then
-        local hammerData = hammerMod.hammerData
-        local aspectDrawOrder = hammerMod.aspectDrawOrder
-        for _, aspectName in ipairs(aspectDrawOrder) do
-            local data = hammerData[aspectName]
-            local idx = readBits(HAMMER_BITS)
-            if data and idx < #data.values then
-                hammers[aspectName] = data.values[idx + 1]
+    -- Inline option payloads (in discovery order, only modules with options)
+    if chunkIdx <= #chunksList then
+        for _, m in ipairs(Discovery.modulesWithOptions) do
+            for _, opt in ipairs(m.options) do
+                if opt.type == "checkbox" then
+                    Discovery.setOptionValue(m, opt.configKey, readBits(1) == 1)
+                elseif opt.type == "dropdown" or opt.type == "radio" then
+                    local bits = opt.bits or lib.bitsRequired(#opt.values)
+                    local idx = readBits(bits)
+                    if idx < #opt.values then
+                        Discovery.setOptionValue(m, opt.configKey, opt.values[idx + 1])
+                    end
+                end
+            end
+        end
+    end
+
+    -- Special module payloads (in discovery order, driven by stateSchema)
+    if chunkIdx <= #chunksList then
+        for _, special in ipairs(Discovery.specials) do
+            local schema = special.stateSchema
+            if schema then
+                local cfg = special.mod.config
+                for _, field in ipairs(schema) do
+                    local bits = lib.resolveBits(field)
+                    local key = field.configKey
+
+                    -- Resolve write target for nested keys
+                    local tbl, leafKey
+                    if type(key) == "table" then
+                        tbl = cfg
+                        for i = 1, #key - 1 do
+                            tbl = tbl[key[i]]
+                            if not tbl then
+                                Core.warn("stateSchema decode: config path missing at '" .. key[i] .. "' in " .. special.modName)
+                                break
+                            end
+                        end
+                        leafKey = key[#key]
+                    else
+                        tbl = cfg
+                        leafKey = key
+                    end
+
+                    if tbl then
+                        if field.type == "checkbox" then
+                            tbl[leafKey] = readBits(1) == 1
+                        elseif field.type == "dropdown" or field.type == "radio" then
+                            local idx = readBits(bits)
+                            if field.values and idx < #field.values then
+                                tbl[leafKey] = field.values[idx + 1]
+                            end
+                        else
+                            Core.warn("stateSchema decode: unknown type '" .. tostring(field.type) .. "' in " .. special.modName)
+                        end
+                    end
+                end
+                -- Refresh staging from updated config
+                if special.mod.SnapshotStaging then
+                    special.mod.SnapshotStaging()
+                end
             end
         end
     end

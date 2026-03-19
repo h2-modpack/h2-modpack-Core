@@ -57,6 +57,8 @@ local MODULE_ORDER = {
 }
 
 -- Special modules (not in boolean hash, handled separately)
+-- Each must expose definition.tabLabel for the sidebar.
+-- Append only, never reorder — hash payload order depends on this.
 local SPECIAL_MODULES = {
     { modName = "adamant-FirstHammer" },
 }
@@ -68,7 +70,8 @@ local SPECIAL_MODULES = {
 -- Populated by Discovery.run()
 Discovery.modules = {}          -- ordered list of discovered boolean modules
 Discovery.modulesById = {}      -- id -> module entry
-Discovery.specials = {}         -- discovered special modules (keyed by modName)
+Discovery.modulesWithOptions = {} -- ordered list of modules that have definition.options
+Discovery.specials = {}         -- ordered list of discovered special modules
 
 Discovery.categories = {}       -- ordered list of { key, label }
 Discovery.byCategory = {}       -- category key -> ordered list of modules
@@ -89,48 +92,62 @@ function Discovery.run()
         local mod = mods[entry.modName]
         if mod and mod.definition then
             local def = mod.definition
-            local module = {
-                modName    = entry.modName,
-                mod        = mod,
-                definition = def,
-                id         = def.id,
-                name       = def.name,
-                category   = entry.category,
-                group      = def.group or "General",
-                tooltip    = def.tooltip or "",
-                default    = def.default,
-            }
+            if not def.id or not def.enable or not def.disable then
+                Core.warn("Skipping " .. entry.modName .. ": missing id, enable, or disable")
+            else
+                local module = {
+                    modName    = entry.modName,
+                    mod        = mod,
+                    definition = def,
+                    id         = def.id,
+                    name       = def.name,
+                    category   = entry.category,
+                    group      = def.group or "General",
+                    tooltip    = def.tooltip or "",
+                    default    = def.default,
+                    options    = def.options,  -- nil if no inline options
+                }
 
-            table.insert(Discovery.modules, module)
-            Discovery.modulesById[def.id] = module
+                table.insert(Discovery.modules, module)
+                Discovery.modulesById[def.id] = module
+                if def.options and #def.options > 0 then
+                    table.insert(Discovery.modulesWithOptions, module)
+                end
 
-            -- Category tracking
-            local cat = entry.category
-            if not categorySet[cat] then
-                categorySet[cat] = true
-                table.insert(Discovery.categories, {
-                    key = cat,
-                    label = entry.categoryLabel or categoryLabels[cat] or cat,
-                })
+                -- Category tracking
+                local cat = entry.category
+                if not categorySet[cat] then
+                    categorySet[cat] = true
+                    table.insert(Discovery.categories, {
+                        key = cat,
+                        label = entry.categoryLabel or categoryLabels[cat] or cat,
+                    })
+                end
+                if entry.categoryLabel then
+                    categoryLabels[cat] = entry.categoryLabel
+                end
+
+                Discovery.byCategory[cat] = Discovery.byCategory[cat] or {}
+                table.insert(Discovery.byCategory[cat], module)
             end
-            if entry.categoryLabel then
-                categoryLabels[cat] = entry.categoryLabel
-            end
-
-            Discovery.byCategory[cat] = Discovery.byCategory[cat] or {}
-            table.insert(Discovery.byCategory[cat], module)
         end
     end
 
-    -- Discover special modules
+    -- Discover special modules (ordered)
     for _, entry in ipairs(SPECIAL_MODULES) do
         local mod = mods[entry.modName]
         if mod and mod.definition then
-            Discovery.specials[entry.modName] = {
-                modName    = entry.modName,
-                mod        = mod,
-                definition = mod.definition,
-            }
+            local def = mod.definition
+            if not def.name or not def.enable or not def.disable then
+                Core.warn("Skipping special " .. entry.modName .. ": missing name, enable, or disable")
+            else
+                table.insert(Discovery.specials, {
+                    modName     = entry.modName,
+                    mod         = mod,
+                    definition  = def,
+                    stateSchema = def.stateSchema,  -- nil if module has no declarative state
+                })
+            end
         end
     end
 
@@ -189,11 +206,29 @@ function Discovery.setModuleEnabled(module, enabled)
     end
 end
 
---- Get the FirstHammer module reference (or nil if not installed).
-function Discovery.getHammerModule()
-    local entry = Discovery.specials["adamant-FirstHammer"]
-    if entry then return entry.mod end
-    return nil
+--- Read a module option's current value from its config.
+function Discovery.getOptionValue(module, configKey)
+    return module.mod.config[configKey]
+end
+
+--- Write a module option's value to its config.
+function Discovery.setOptionValue(module, configKey, value)
+    module.mod.config[configKey] = value
+end
+
+--- Read a special module's Enabled state from its config.
+function Discovery.isSpecialEnabled(special)
+    return special.mod.config.Enabled == true
+end
+
+--- Write a special module's Enabled state and call enable/disable.
+function Discovery.setSpecialEnabled(special, enabled)
+    special.mod.config.Enabled = enabled
+    if enabled then
+        special.definition.enable()
+    else
+        special.definition.disable()
+    end
 end
 
 Core.Discovery = Discovery

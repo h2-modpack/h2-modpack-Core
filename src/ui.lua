@@ -1,104 +1,20 @@
 local ui = rom.ImGui
-local uiCol = rom.ImGuiCol
 
 local Discovery = Core.Discovery
+local T = Core.Theme
 
--- =============================================================================
--- LOCALIZATION (delegates to FirstHammer module if installed)
--- =============================================================================
+-- Unpack theme for convenient access
+local colors            = T.colors
+local ImGuiTreeNodeFlags = T.ImGuiTreeNodeFlags
+local SIDEBAR_RATIO     = T.SIDEBAR_RATIO
+local FIELD_MEDIUM      = T.FIELD_MEDIUM
+local FIELD_NARROW      = T.FIELD_NARROW
+local FIELD_WIDE        = T.FIELD_WIDE
+local DrawColoredText   = T.DrawColoredText
+local PushTextColor     = T.PushTextColor
+local PushTheme         = T.PushTheme
+local PopTheme          = T.PopTheme
 
-local hasLocalizedLabels = false
-
-local function BuildLocalizedLabels()
-    local hammerMod = Discovery.getHammerModule()
-    if not hammerMod then return end
-    local hammerData = hammerMod.hammerData
-    for _, data in pairs(hammerData) do
-        data.labels = {}
-        for i, internalString in ipairs(data.values) do
-            if internalString == "" then
-                data.labels[i] = "None (Random)"
-            else
-                local localizedName = GetDisplayName({ Text = internalString })
-                data.labels[i] = localizedName or internalString
-            end
-        end
-    end
-    hasLocalizedLabels = true
-end
-
--- =============================================================================
--- THEME
--- =============================================================================
-
-local colors = {
-    text          = {0.92, 0.90, 0.95, 1.0},
-    textDisabled  = {0.45, 0.40, 0.55, 1.0},
-    info          = {0.90, 0.75, 0.20, 1.0},
-    warning       = {0.85, 0.20, 0.25, 1.0},
-    success       = {0.30, 0.85, 0.55, 1.0},
-    error         = {0.90, 0.35, 0.50, 1.0},
-    mixed         = {0.30, 0.70, 0.90, 1.0},
-
-    windowBg      = {0.08, 0.06, 0.12, 0.95},
-    childBg       = {0.10, 0.08, 0.15, 0.90},
-    header        = {0.28, 0.18, 0.45, 1.0},
-    headerHover   = {0.38, 0.25, 0.58, 1.0},
-    headerActive  = {0.45, 0.30, 0.65, 1.0},
-    button        = {0.30, 0.20, 0.48, 1.0},
-    buttonHover   = {0.40, 0.28, 0.60, 1.0},
-    buttonActive  = {0.50, 0.35, 0.70, 1.0},
-    frameBg       = {0.14, 0.10, 0.22, 1.0},
-    frameBgHover  = {0.20, 0.15, 0.30, 1.0},
-    frameBgActive = {0.25, 0.18, 0.38, 1.0},
-    checkMark     = {0.75, 0.55, 1.00, 1.0},
-    tab           = {0.18, 0.12, 0.28, 1.0},
-    tabHover      = {0.35, 0.22, 0.52, 1.0},
-    tabActive     = {0.40, 0.28, 0.60, 1.0},
-    separator     = {0.30, 0.20, 0.45, 0.6},
-    border        = {0.25, 0.18, 0.38, 0.5},
-}
-
-local ImGuiTreeNodeFlags = {
-    DefaultOpen = 32,
-}
-
-local function DrawColoredText(color, text)
-    ui.TextColored(color[1], color[2], color[3], color[4], text)
-end
-
-local function PushTextColor(color)
-    ui.PushStyleColor(uiCol.Text, color[1], color[2], color[3], color[4])
-end
-
-local THEME_COLOR_COUNT = 20
-local function PushTheme()
-    local push = ui.PushStyleColor
-    push(uiCol.Text,            table.unpack(colors.text))
-    push(uiCol.TextDisabled,    table.unpack(colors.textDisabled))
-    push(uiCol.WindowBg,        table.unpack(colors.windowBg))
-    push(uiCol.ChildBg,         table.unpack(colors.childBg))
-    push(uiCol.Header,          table.unpack(colors.header))
-    push(uiCol.HeaderHovered,   table.unpack(colors.headerHover))
-    push(uiCol.HeaderActive,    table.unpack(colors.headerActive))
-    push(uiCol.Button,          table.unpack(colors.button))
-    push(uiCol.ButtonHovered,   table.unpack(colors.buttonHover))
-    push(uiCol.ButtonActive,    table.unpack(colors.buttonActive))
-    push(uiCol.FrameBg,         table.unpack(colors.frameBg))
-    push(uiCol.FrameBgHovered,  table.unpack(colors.frameBgHover))
-    push(uiCol.FrameBgActive,   table.unpack(colors.frameBgActive))
-    push(uiCol.CheckMark,       table.unpack(colors.checkMark))
-    push(uiCol.Tab,             table.unpack(colors.tab))
-    push(uiCol.TabHovered,      table.unpack(colors.tabHover))
-    push(uiCol.TabActive,       table.unpack(colors.tabActive))
-    push(uiCol.Separator,       table.unpack(colors.separator))
-    push(uiCol.Border,          table.unpack(colors.border))
-    push(uiCol.TitleBgActive,   table.unpack(colors.header))
-end
-
-local function PopTheme()
-    ui.PopStyleColor(THEME_COLOR_COUNT)
-end
 
 -- =============================================================================
 -- STAGING TABLE (performance cache — avoids Chalk reads in render loop)
@@ -107,18 +23,14 @@ end
 -- UI reads/writes go through staging. Chalk is only touched in event handlers.
 
 local staging = {
-    ModEnabled    = config.ModEnabled == true,  -- snapshot once
-    HammerEnabled = false,
-    FirstHammers  = {},
-    modules       = {},  -- [module.id] = bool
+    ModEnabled = config.ModEnabled == true,  -- snapshot once
+    modules    = {},  -- [module.id] = bool
+    options    = {},  -- [module.id] = { [configKey] = value }
+    specials   = {},  -- [special.modName] = bool (enabled state)
 }
 
 -- Profile staging: plain copies of config.Profiles
 local profileStaging = {}
-
-local function ShallowCopy(src, dst)
-    for k, v in pairs(src) do dst[k] = v end
-end
 
 --- Snapshot all Chalk configs into staging (called at init and after profile load).
 local function SnapshotToStaging()
@@ -129,11 +41,20 @@ local function SnapshotToStaging()
         staging.modules[m.id] = Discovery.isModuleEnabled(m)
     end
 
-    -- Hammers
-    local hammerMod = Discovery.getHammerModule()
-    if hammerMod then
-        staging.HammerEnabled = hammerMod.config.Enabled == true
-        ShallowCopy(hammerMod.config.FirstHammers, staging.FirstHammers)
+    -- Inline options
+    for _, m in ipairs(Discovery.modulesWithOptions) do
+        staging.options[m.id] = staging.options[m.id] or {}
+        for _, opt in ipairs(m.options) do
+            staging.options[m.id][opt.configKey] = Discovery.getOptionValue(m, opt.configKey)
+        end
+    end
+
+    -- Special modules
+    for _, special in ipairs(Discovery.specials) do
+        staging.specials[special.modName] = Discovery.isSpecialEnabled(special)
+        if special.mod.SnapshotStaging then
+            special.mod.SnapshotStaging()
+        end
     end
 
     -- Profiles
@@ -168,7 +89,7 @@ local importHashBuffer = ""
 local importFeedback = nil
 local importFeedbackColor = nil
 local importFeedbackTime = nil
-local excludeHammers = false
+local excludeSpecials = false
 
 -- Bug fix status cache
 local bugFixStatusText = ""
@@ -250,27 +171,41 @@ local function ToggleModule(module, enabled)
     Core.UpdateHash()
 end
 
-local function ToggleHammer(hammerMod, enabled)
-    staging.HammerEnabled = enabled
-    hammerMod.config.Enabled = enabled
-    if enabled then
-        hammerMod.definition.enable()
-    else
-        hammerMod.definition.disable()
+local function ChangeOption(module, configKey, value)
+    -- Update staging
+    staging.options[module.id] = staging.options[module.id] or {}
+    staging.options[module.id][configKey] = value
+    -- Write to Chalk
+    Discovery.setOptionValue(module, configKey, value)
+    -- Re-apply if data mutation (option may affect game tables)
+    if module.definition.dataMutation then
+        module.definition.disable()
+        module.definition.enable()
+        SetupRunData()
     end
     InvalidateHash()
     Core.UpdateHash()
 end
 
-local function SetHammerChoice(weaponKey, value)
-    staging.FirstHammers[weaponKey] = value
-    local hammerMod = Discovery.getHammerModule()
-    if hammerMod then
-        hammerMod.config.FirstHammers[weaponKey] = value
-    end
+local function ToggleSpecial(special, enabled)
+    staging.specials[special.modName] = enabled
+    Discovery.setSpecialEnabled(special, enabled)
     InvalidateHash()
     Core.UpdateHash()
 end
+
+--- Generic callback passed to special modules' Draw* functions.
+--- The module manages its own staging; we just tell it to sync and refresh hash.
+local function MakeSpecialOnChanged(special)
+    return function()
+        if special.mod.SyncToConfig then
+            special.mod.SyncToConfig()
+        end
+        InvalidateHash()
+        Core.UpdateHash()
+    end
+end
+
 
 --- Load a profile hash: decode, apply to all module configs, re-snapshot.
 local function LoadProfile(hash)
@@ -308,51 +243,6 @@ local defaultProfiles = {
     { Name = "RTA",      Hash = "1AfB20.3", Tooltip = "RTA Enabled. Arachne Pity Enabled. Medea/Arachne Spawns Not Forced" },
 }
 
--- =============================================================================
--- HAMMER UI (delegates to FirstHammer module)
--- =============================================================================
-
-local function DrawHammerDropdown(weaponKey, displayLabel)
-    local hammerMod = Discovery.getHammerModule()
-    if not hammerMod then return end
-
-    if not hasLocalizedLabels then BuildLocalizedLabels() end
-
-    local data = hammerMod.hammerData[weaponKey]
-    if not data then return end
-
-    -- Read from staging, not Chalk
-    local currentId = staging.FirstHammers[weaponKey] or ""
-    local currentIndex = 1
-    for i, val in ipairs(data.values) do
-        if val == currentId then
-            currentIndex = i
-            break
-        end
-    end
-
-    local currentPreview = data.labels[currentIndex] or "None (Random)"
-
-    ui.PushID(weaponKey)
-    ui.Text(displayLabel)
-    ui.SameLine()
-    local winW = ui.GetWindowWidth()
-    ui.SetCursorPosX(winW * 0.25)
-    ui.PushItemWidth(winW * 0.4)
-    if ui.BeginCombo("##HammerCombo", currentPreview) then
-        for i, txt in ipairs(data.labels) do
-            local isSelected = (i == currentIndex)
-            if ui.Selectable(txt, isSelected) then
-                if i ~= currentIndex then
-                    SetHammerChoice(weaponKey, data.values[i])
-                end
-            end
-        end
-        ui.EndCombo()
-    end
-    ui.PopItemWidth()
-    ui.PopID()
-end
 
 -- =============================================================================
 -- GENERIC TAB CONTENT RENDERER
@@ -381,12 +271,393 @@ local function DrawCheckboxGroup(layoutData, category)
                     if ui.IsItemHovered() and itemData.Tooltip and itemData.Tooltip ~= "" then
                         ui.SetTooltip(itemData.Tooltip)
                     end
+
+                    -- Inline options (rendered below checkbox when module is enabled)
+                    if currentVal and m.options then
+                        ui.Indent()
+                        local opts = staging.options[m.id] or {}
+                        for _, opt in ipairs(m.options) do
+                            ui.PushID(m.id .. "_" .. opt.configKey)
+
+                            if opt.type == "checkbox" then
+                                local bVal = opts[opt.configKey]
+                                if bVal == nil then bVal = opt.default end
+                                local newVal, bChg = ui.Checkbox(opt.label or opt.configKey, bVal or false)
+                                if bChg then
+                                    ChangeOption(m, opt.configKey, newVal)
+                                end
+
+                            elseif opt.type == "dropdown" then
+                                local current = opts[opt.configKey] or opt.default or ""
+                                local currentIdx = 1
+                                for i, v in ipairs(opt.values) do
+                                    if v == current then currentIdx = i; break end
+                                end
+                                local preview = opt.values[currentIdx] or ""
+                                ui.Text(opt.label or opt.configKey)
+                                ui.SameLine()
+                                ui.PushItemWidth(ui.GetWindowWidth() * FIELD_MEDIUM)
+                                if ui.BeginCombo("##opt", preview) then
+                                    for i, v in ipairs(opt.values) do
+                                        if ui.Selectable(v, i == currentIdx) then
+                                            if i ~= currentIdx then
+                                                ChangeOption(m, opt.configKey, v)
+                                            end
+                                        end
+                                    end
+                                    ui.EndCombo()
+                                end
+                                ui.PopItemWidth()
+
+                            elseif opt.type == "radio" then
+                                local current = opts[opt.configKey] or opt.default or ""
+                                ui.Text(opt.label or opt.configKey)
+                                for _, v in ipairs(opt.values) do
+                                    if ui.RadioButton(v, current == v) then
+                                        if v ~= current then
+                                            ChangeOption(m, opt.configKey, v)
+                                        end
+                                    end
+                                    ui.SameLine()
+                                end
+                                ui.NewLine()
+                            end
+
+                            ui.PopID()
+                        end
+                        ui.Unindent()
+                    end
                 end
             end
             ui.Unindent()
         end
         ui.Spacing()
     end
+end
+
+-- =============================================================================
+-- MAIN WINDOW
+-- =============================================================================
+
+-- =============================================================================
+-- SIDE TAB DEFINITIONS
+-- =============================================================================
+
+local selectedTab = "Quick Setup"
+
+local function BuildTabList()
+    local tabs = { "Quick Setup" }
+    -- Special module tabs
+    for _, special in ipairs(Discovery.specials) do
+        local label = special.definition.tabLabel or special.definition.name
+        table.insert(tabs, label)
+    end
+    -- Category tabs
+    for _, cat in ipairs(Discovery.categories) do
+        table.insert(tabs, cat.label)
+    end
+    table.insert(tabs, "Profiles")
+    table.insert(tabs, "Dev")
+    return tabs
+end
+
+-- Build lookup: tab label -> special entry
+local specialByTabLabel = {}
+for _, special in ipairs(Discovery.specials) do
+    local label = special.definition.tabLabel or special.definition.name
+    specialByTabLabel[label] = special
+end
+
+-- =============================================================================
+-- TAB CONTENT DRAWERS
+-- =============================================================================
+
+local function DrawQuickSetup()>
+    local winW = ui.GetWindowWidth()
+
+    DrawColoredText(colors.info, "Select a profile to automatically configure the modpack:")
+    ui.Spacing()
+
+    if slotLabelsDirty then RebuildSlotLabels() end
+
+    local comboPreview = "Select..."
+    if selectedProfileCombo > 0 and selectedProfileCombo <= NUM_PROFILES and slotOccupied[selectedProfileCombo] then
+        comboPreview = slotLabels[selectedProfileCombo]
+    end
+
+    ui.PushItemWidth(winW * FIELD_MEDIUM)
+    if ui.BeginCombo("Profile", comboPreview) then
+        for i = 1, NUM_PROFILES do
+            if slotOccupied[i] then
+                ui.PushID(i)
+                if ui.Selectable(slotLabels[i], i == selectedProfileCombo) then
+                    selectedProfileCombo = i
+                end
+                if ui.IsItemHovered() then
+                    local tip = profileStaging[i].Tooltip
+                    if tip ~= "" then ui.SetTooltip(tip) end
+                end
+                ui.PopID()
+            end
+        end
+        ui.EndCombo()
+    end
+    ui.PopItemWidth()
+
+    ui.SameLine()
+    local sel = selectedProfileCombo
+    if sel > 0 and sel <= NUM_PROFILES then
+        local hash = profileStaging[sel].Hash
+        if hash ~= "" then
+            if ui.Button("Load") then LoadProfile(hash) end
+        end
+    end
+
+    ui.Separator()
+    ui.Spacing()
+
+    -- Bug fix bulk toggles
+    if Discovery.byCategory["BugFixes"] then
+        DrawColoredText(colors.info, "Toggle all bug fixes at once. Go to the Bug Fixes tab for individual control.")
+        if bugFixStatusDirty then RebuildBugFixStatus() end
+        DrawColoredText(colors.text, "Current Status: ")
+        ui.SameLine()
+        DrawColoredText(bugFixStatusColor, bugFixStatusText)
+        ui.Spacing()
+
+        if ui.Button("Enable All") then SetBugFixes(true) end
+        ui.SameLine()
+        if ui.Button("Disable All") then SetBugFixes(false) end
+
+        ui.Separator()
+        ui.Spacing()
+    end
+
+    -- Quick content from special modules
+    for _, special in ipairs(Discovery.specials) do
+        if special.mod.DrawQuickContent then
+            ui.Separator()
+            ui.Spacing()
+            special.mod.DrawQuickContent(ui, MakeSpecialOnChanged(special), T)
+        end
+    end
+end
+
+local function DrawSpecialTab(special)
+    -- Enable checkbox (standardized by Core)
+    local enabled = staging.specials[special.modName] or false
+    local val, chg = ui.Checkbox("Enable " .. special.definition.name, enabled)
+    if chg then
+        ToggleSpecial(special, val)
+    end
+    if ui.IsItemHovered() and special.definition.tooltip then
+        ui.SetTooltip(special.definition.tooltip)
+    end
+
+    ui.Spacing()
+
+    -- Delegate tab content to the module
+    if special.mod.DrawTab then
+        special.mod.DrawTab(ui, MakeSpecialOnChanged(special), T)
+    end
+end
+
+local function DrawProfiles()
+    local winW = ui.GetWindowWidth()
+
+    -- Export / Import
+    PushTextColor(colors.info)
+    ui.CollapsingHeader("Export / Import", ImGuiTreeNodeFlags.DefaultOpen)
+    ui.PopStyleColor()
+    ui.Indent()
+
+    -- Read cached hash (computed from staging, not Chalk)
+    local currentHash, boolHash = GetCachedHash()
+    ui.Text("Current Hash:")
+    ui.SameLine()
+    DrawColoredText(colors.success, boolHash)
+    local specialPayload = string.sub(currentHash, #boolHash + 1)
+    if specialPayload ~= "" then
+        ui.SameLine()
+        DrawColoredText(colors.textDisabled, specialPayload)
+    end
+    ui.SameLine()
+    if ui.Button("Copy") then
+        ui.SetClipboardText(excludeSpecials and boolHash or currentHash)
+        SetImportFeedback("Copied to clipboard!", colors.success)
+    end
+    if #Discovery.specials > 0 then
+        ui.SameLine()
+        local exVal, exChg = ui.Checkbox("Exclude Specials", excludeSpecials)
+        if exChg then excludeSpecials = exVal end
+    end
+
+    ui.Spacing()
+    ui.Text("Import Hash:")
+    ui.SameLine()
+    ui.PushItemWidth(winW * FIELD_MEDIUM)
+    local newText, changed = ui.InputText("##ImportHash", importHashBuffer, 256)
+    if changed then importHashBuffer = newText end
+    ui.PopItemWidth()
+    ui.SameLine()
+    if ui.Button("Paste") then
+        local clip = ui.GetClipboardText()
+        if clip then importHashBuffer = clip end
+    end
+    ui.SameLine()
+    if ui.Button("Import") then
+        if LoadProfile(importHashBuffer) then
+            SetImportFeedback("Imported successfully!", colors.success)
+        else
+            SetImportFeedback("Invalid hash.", colors.error)
+        end
+    end
+    if importFeedback then
+        if os.clock() - importFeedbackTime > FEEDBACK_DURATION then
+            importFeedback = nil
+        else
+            ui.SameLine()
+            DrawColoredText(importFeedbackColor, importFeedback)
+        end
+    end
+
+    ui.Unindent()
+    ui.Spacing()
+    ui.Separator()
+    ui.Spacing()
+
+    -- Profile Slot Selector
+    PushTextColor(colors.info)
+    ui.CollapsingHeader("Saved Profiles", ImGuiTreeNodeFlags.DefaultOpen)
+    ui.PopStyleColor()
+    ui.Indent()
+
+    if slotLabelsDirty then RebuildSlotLabels() end
+
+    ui.PushItemWidth(winW * FIELD_NARROW)
+    if ui.BeginCombo("Slot", slotLabels[selectedProfileSlot]) then
+        for i, label in ipairs(slotLabels) do
+            if ui.Selectable(label, i == selectedProfileSlot) then
+                selectedProfileSlot = i
+            end
+        end
+        ui.EndCombo()
+    end
+    ui.PopItemWidth()
+
+    ui.Spacing()
+
+    -- Read from profileStaging, not Chalk
+    local ps = profileStaging[selectedProfileSlot]
+    local hasData = ps.Hash ~= ""
+
+    ui.Text("Name:")
+    ui.SameLine()
+    ui.PushItemWidth(winW * FIELD_NARROW)
+    local newName, nameChanged = ui.InputText("##SlotName", ps.Name, 64)
+    if nameChanged then
+        ps.Name = newName
+        config.Profiles[selectedProfileSlot].Name = newName  -- write to Chalk
+        slotLabelsDirty = true
+    end
+    ui.PopItemWidth()
+
+    ui.Text("Tooltip:")
+    ui.SameLine()
+    ui.PushItemWidth(winW * FIELD_WIDE)
+    local newTooltip, tooltipChanged = ui.InputText("##SlotTooltip", ps.Tooltip, 256)
+    if tooltipChanged then
+        ps.Tooltip = newTooltip
+        config.Profiles[selectedProfileSlot].Tooltip = newTooltip  -- write to Chalk
+    end
+    ui.PopItemWidth()
+
+    if hasData then
+        ui.Text("Hash:")
+        ui.SameLine()
+        DrawColoredText(colors.textDisabled, ps.Hash)
+    end
+
+    ui.Spacing()
+
+    if ui.Button("Save Current") then
+        local h = GetCachedHash()
+        ps.Hash = h
+        config.Profiles[selectedProfileSlot].Hash = h  -- write to Chalk
+        if ps.Name == "" then
+            ps.Name = "Profile " .. selectedProfileSlot
+            config.Profiles[selectedProfileSlot].Name = ps.Name
+        end
+        slotLabelsDirty = true
+    end
+
+    if hasData then
+        ui.SameLine()
+        if ui.Button("Load") then LoadProfile(ps.Hash) end
+        ui.SameLine()
+        if ui.Button("Clear") then
+            ps.Name = ""
+            ps.Hash = ""
+            ps.Tooltip = ""
+            local cp = config.Profiles[selectedProfileSlot]
+            cp.Name = ""
+            cp.Hash = ""
+            cp.Tooltip = ""
+            slotLabelsDirty = true
+        end
+        if ui.IsItemHovered() then
+            ui.SetTooltip("Permanently clears this profile slot.")
+        end
+    end
+
+    ui.Unindent()
+    ui.Spacing()
+    ui.Separator()
+    ui.Spacing()
+
+    if ui.Button("Restore Default Profiles") then
+        for i = 1, NUM_PROFILES do
+            local d = defaultProfiles[i]
+            local cp = config.Profiles[i]  -- Chalk write
+            if d then
+                profileStaging[i] = { Name = d.Name, Hash = d.Hash, Tooltip = d.Tooltip }
+                cp.Name = d.Name
+                cp.Hash = d.Hash
+                cp.Tooltip = d.Tooltip
+            else
+                profileStaging[i] = { Name = "", Hash = "", Tooltip = "" }
+                cp.Name = ""
+                cp.Hash = ""
+                cp.Tooltip = ""
+            end
+        end
+        slotLabelsDirty = true
+    end
+    if ui.IsItemHovered() then
+        ui.SetTooltip("Overwrites ALL profile slots with the shipped defaults. Custom profiles will be lost.")
+    end
+end
+
+-- =============================================================================
+-- CATEGORY LABEL LOOKUP
+-- =============================================================================
+
+local function DrawDev()
+    DrawColoredText(colors.info, "Developer options for module authors and debugging.")
+    ui.Spacing()
+
+    local val, chg = ui.Checkbox("Debug Mode", config.DebugMode == true)
+    if chg then
+        config.DebugMode = val
+    end
+    if ui.IsItemHovered() then
+        ui.SetTooltip("Enables diagnostic warnings in the console for schema validation, missing fields, and module errors.")
+    end
+end
+
+local categoryKeyByLabel = {}
+for _, cat in ipairs(Discovery.categories) do
+    categoryKeyByLabel[cat.label] = cat.key
 end
 
 -- =============================================================================
@@ -407,9 +678,10 @@ local function DrawMainWindow()
                 end
                 -- Keep staging.modules as-is so re-enable restores previous state
             end
-            local hammerMod = Discovery.getHammerModule()
-            if hammerMod and staging.HammerEnabled then
-                hammerMod.definition.disable()
+            for _, special in ipairs(Discovery.specials) do
+                if staging.specials[special.modName] then
+                    special.definition.disable()
+                end
             end
         else
             -- Re-enable from staging state
@@ -418,9 +690,10 @@ local function DrawMainWindow()
                     m.definition.enable()
                 end
             end
-            local hammerMod = Discovery.getHammerModule()
-            if hammerMod and staging.HammerEnabled then
-                hammerMod.definition.enable()
+            for _, special in ipairs(Discovery.specials) do
+                if staging.specials[special.modName] then
+                    special.definition.enable()
+                end
             end
         end
         SetupRunData()
@@ -436,315 +709,42 @@ local function DrawMainWindow()
 
     ui.Spacing()
     ui.Separator()
+    ui.Spacing()
 
-    ui.BeginChild("TabContentRegion", 0, 0, false)
+    local tabs = BuildTabList()
+    local totalW = ui.GetWindowWidth()
+    local sidebarW = totalW * SIDEBAR_RATIO
 
-    local winW = ui.GetWindowWidth()
-    local hammerMod = Discovery.getHammerModule()
-    local categories = Discovery.categories
-
-    if ui.BeginTabBar("ModpackTabs") then
-        -- TAB: QUICK SETUP
-        if ui.BeginTabItem("Quick Setup") then
-            ui.Spacing()
-            DrawColoredText(colors.info, "Select a profile to automatically configure the modpack:")
-            ui.Spacing()
-
-            if slotLabelsDirty then RebuildSlotLabels() end
-
-            local comboPreview = "Select..."
-            if selectedProfileCombo > 0 and selectedProfileCombo <= NUM_PROFILES and slotOccupied[selectedProfileCombo] then
-                comboPreview = slotLabels[selectedProfileCombo]
-            end
-
-            ui.PushItemWidth(winW * 0.45)
-            if ui.BeginCombo("Profile", comboPreview) then
-                for i = 1, NUM_PROFILES do
-                    if slotOccupied[i] then
-                        ui.PushID(i)
-                        if ui.Selectable(slotLabels[i], i == selectedProfileCombo) then
-                            selectedProfileCombo = i
-                        end
-                        if ui.IsItemHovered() then
-                            local tip = profileStaging[i].Tooltip
-                            if tip ~= "" then ui.SetTooltip(tip) end
-                        end
-                        ui.PopID()
-                    end
-                end
-                ui.EndCombo()
-            end
-            ui.PopItemWidth()
-
-            ui.SameLine()
-            local sel = selectedProfileCombo
-            if sel > 0 and sel <= NUM_PROFILES then
-                local hash = profileStaging[sel].Hash
-                if hash ~= "" then
-                    if ui.Button("Load") then LoadProfile(hash) end
-                end
-            end
-
-            ui.Separator()
-            ui.Spacing()
-
-            -- Bug fix bulk toggles
-            if Discovery.byCategory["BugFixes"] then
-                DrawColoredText(colors.info, "Toggle all bug fixes at once. Go to the Bug Fixes tab for individual control.")
-                if bugFixStatusDirty then RebuildBugFixStatus() end
-                DrawColoredText(colors.text, "Current Status: ")
-                ui.SameLine()
-                DrawColoredText(bugFixStatusColor, bugFixStatusText)
-                ui.Spacing()
-
-                if ui.Button("Enable All") then SetBugFixes(true) end
-                ui.SameLine()
-                if ui.Button("Disable All") then SetBugFixes(false) end
-
-                ui.Separator()
-                ui.Spacing()
-            end
-
-            -- Quick hammer select
-            if hammerMod then
-                DrawColoredText(colors.info, "Quick Hammer Select for your current aspect.")
-                ui.Spacing()
-
-                local currentWeapon = hammerMod.GetEquippedAspect()
-                local weaponNameLabel = hammerMod.aspectLabels[currentWeapon] or "Unknown Weapon"
-
-                if hammerMod.hammerData[currentWeapon] then
-                    DrawHammerDropdown(currentWeapon, "Equipped: " .. weaponNameLabel)
-                end
-            end
-
-            ui.EndTabItem()
+    -- Sidebar (proportional width, fill remaining height)
+    ui.BeginChild("Sidebar", sidebarW, 0, true)
+    for _, tabName in ipairs(tabs) do
+        if ui.Selectable(tabName, selectedTab == tabName) then
+            selectedTab = tabName
         end
+    end
+    ui.EndChild()
 
-        -- TAB: HAMMERS
-        if hammerMod and ui.BeginTabItem("Hammers") then
-            ui.Spacing()
+    ui.SameLine()
 
-            -- Read from staging, not Chalk
-            local hVal, hChg = ui.Checkbox("Enable First Hammer", staging.HammerEnabled)
-            if hChg then
-                ToggleHammer(hammerMod, hVal)
-            end
-            if ui.IsItemHovered() then
-                ui.SetTooltip(hammerMod.definition.tooltip)
-            end
+    -- Content panel (0 height = fill remaining space)
+    ui.BeginChild("TabContent", 0, 0, true)
+    ui.Spacing()
 
-            ui.Spacing()
-            DrawColoredText(colors.info, "Select the guaranteed first hammer for each aspect.")
-            ui.Spacing()
-
-            for _, weaponKey in ipairs(hammerMod.weaponDrawOrder) do
-                local weaponDisplayName = hammerMod.weaponLabels[weaponKey] or weaponKey
-
-                if ui.CollapsingHeader(weaponDisplayName) then
-                    ui.Indent()
-                    local aspects = hammerMod.WeaponAspectMapping[weaponKey]
-                    if aspects then
-                        for _, aspectKey in ipairs(aspects) do
-                            local aspectDisplayName = hammerMod.aspectLabels[aspectKey] or aspectKey
-                            DrawHammerDropdown(aspectKey, aspectDisplayName)
-                        end
-                    end
-                    ui.Unindent()
-                end
-            end
-            ui.Spacing()
-            ui.EndTabItem()
+    if selectedTab == "Quick Setup" then
+        DrawQuickSetup()
+    elseif selectedTab == "Profiles" then
+        DrawProfiles()
+    elseif selectedTab == "Dev" then
+        DrawDev()
+    elseif specialByTabLabel[selectedTab] then
+        -- Special module tab
+        DrawSpecialTab(specialByTabLabel[selectedTab])
+    else
+        -- Dynamic category tab
+        local catKey = categoryKeyByLabel[selectedTab]
+        if catKey and Discovery.categoryLayouts[catKey] then
+            DrawCheckboxGroup(Discovery.categoryLayouts[catKey], catKey)
         end
-
-        -- DYNAMIC CATEGORY TABS
-        for _, cat in ipairs(categories) do
-            if ui.BeginTabItem(cat.label) then
-                ui.Spacing()
-                DrawCheckboxGroup(Discovery.categoryLayouts[cat.key], cat.key)
-                ui.EndTabItem()
-            end
-        end
-
-        -- TAB: PROFILES
-        if ui.BeginTabItem("Profiles") then
-            ui.Spacing()
-
-            -- Export / Import
-            PushTextColor(colors.info)
-            ui.CollapsingHeader("Export / Import", ImGuiTreeNodeFlags.DefaultOpen)
-            ui.PopStyleColor()
-            ui.Indent()
-
-            -- Read cached hash (computed from staging, not Chalk)
-            local currentHash, boolHash = GetCachedHash()
-            ui.Text("Current Hash:")
-            ui.SameLine()
-            DrawColoredText(colors.success, boolHash)
-            local hammerPayload = string.sub(currentHash, #boolHash + 1)
-            if hammerPayload ~= "" then
-                ui.SameLine()
-                DrawColoredText(colors.textDisabled, hammerPayload)
-            end
-            ui.SameLine()
-            if ui.Button("Copy") then
-                ui.SetClipboardText(excludeHammers and boolHash or currentHash)
-                SetImportFeedback("Copied to clipboard!", colors.success)
-            end
-            ui.SameLine()
-            local exVal, exChg = ui.Checkbox("Exclude Hammers", excludeHammers)
-            if exChg then excludeHammers = exVal end
-
-            ui.Spacing()
-            ui.Text("Import Hash:")
-            ui.SameLine()
-            ui.PushItemWidth(winW * 0.4)
-            local newText, changed = ui.InputText("##ImportHash", importHashBuffer, 256)
-            if changed then importHashBuffer = newText end
-            ui.PopItemWidth()
-            ui.SameLine()
-            if ui.Button("Paste") then
-                local clip = ui.GetClipboardText()
-                if clip then importHashBuffer = clip end
-            end
-            ui.SameLine()
-            if ui.Button("Import") then
-                if LoadProfile(importHashBuffer) then
-                    SetImportFeedback("Imported successfully!", colors.success)
-                else
-                    SetImportFeedback("Invalid hash.", colors.error)
-                end
-            end
-            if importFeedback then
-                if os.clock() - importFeedbackTime > FEEDBACK_DURATION then
-                    importFeedback = nil
-                else
-                    ui.SameLine()
-                    DrawColoredText(importFeedbackColor, importFeedback)
-                end
-            end
-
-            ui.Unindent()
-            ui.Spacing()
-            ui.Separator()
-            ui.Spacing()
-
-            -- Profile Slot Selector
-            PushTextColor(colors.info)
-            ui.CollapsingHeader("Saved Profiles", ImGuiTreeNodeFlags.DefaultOpen)
-            ui.PopStyleColor()
-            ui.Indent()
-
-            if slotLabelsDirty then RebuildSlotLabels() end
-
-            ui.PushItemWidth(winW * 0.3)
-            if ui.BeginCombo("Slot", slotLabels[selectedProfileSlot]) then
-                for i, label in ipairs(slotLabels) do
-                    if ui.Selectable(label, i == selectedProfileSlot) then
-                        selectedProfileSlot = i
-                    end
-                end
-                ui.EndCombo()
-            end
-            ui.PopItemWidth()
-
-            ui.Spacing()
-
-            -- Read from profileStaging, not Chalk
-            local ps = profileStaging[selectedProfileSlot]
-            local hasData = ps.Hash ~= ""
-
-            ui.Text("Name:")
-            ui.SameLine()
-            ui.PushItemWidth(winW * 0.2)
-            local newName, nameChanged = ui.InputText("##SlotName", ps.Name, 64)
-            if nameChanged then
-                ps.Name = newName
-                config.Profiles[selectedProfileSlot].Name = newName  -- write to Chalk
-                slotLabelsDirty = true
-            end
-            ui.PopItemWidth()
-
-            ui.Text("Tooltip:")
-            ui.SameLine()
-            ui.PushItemWidth(winW * 0.8)
-            local newTooltip, tooltipChanged = ui.InputText("##SlotTooltip", ps.Tooltip, 256)
-            if tooltipChanged then
-                ps.Tooltip = newTooltip
-                config.Profiles[selectedProfileSlot].Tooltip = newTooltip  -- write to Chalk
-            end
-            ui.PopItemWidth()
-
-            if hasData then
-                ui.Text("Hash:")
-                ui.SameLine()
-                DrawColoredText(colors.textDisabled, ps.Hash)
-            end
-
-            ui.Spacing()
-
-            if ui.Button("Save Current") then
-                local h = GetCachedHash()
-                ps.Hash = h
-                config.Profiles[selectedProfileSlot].Hash = h  -- write to Chalk
-                if ps.Name == "" then
-                    ps.Name = "Profile " .. selectedProfileSlot
-                    config.Profiles[selectedProfileSlot].Name = ps.Name
-                end
-                slotLabelsDirty = true
-            end
-
-            if hasData then
-                ui.SameLine()
-                if ui.Button("Load") then LoadProfile(ps.Hash) end
-                ui.SameLine()
-                if ui.Button("Clear") then
-                    ps.Name = ""
-                    ps.Hash = ""
-                    ps.Tooltip = ""
-                    local cp = config.Profiles[selectedProfileSlot]
-                    cp.Name = ""
-                    cp.Hash = ""
-                    cp.Tooltip = ""
-                    slotLabelsDirty = true
-                end
-                if ui.IsItemHovered() then
-                    ui.SetTooltip("Permanently clears this profile slot.")
-                end
-            end
-
-            ui.Unindent()
-            ui.Spacing()
-            ui.Separator()
-            ui.Spacing()
-
-            if ui.Button("Restore Default Profiles") then
-                for i = 1, NUM_PROFILES do
-                    local d = defaultProfiles[i]
-                    local cp = config.Profiles[i]  -- Chalk write
-                    if d then
-                        profileStaging[i] = { Name = d.Name, Hash = d.Hash, Tooltip = d.Tooltip }
-                        cp.Name = d.Name
-                        cp.Hash = d.Hash
-                        cp.Tooltip = d.Tooltip
-                    else
-                        profileStaging[i] = { Name = "", Hash = "", Tooltip = "" }
-                        cp.Name = ""
-                        cp.Hash = ""
-                        cp.Tooltip = ""
-                    end
-                end
-                slotLabelsDirty = true
-            end
-            if ui.IsItemHovered() then
-                ui.SetTooltip("Overwrites ALL profile slots with the shipped defaults. Custom profiles will be lost.")
-            end
-
-            ui.Spacing()
-            ui.EndTabItem()
-        end
-
-        ui.EndTabBar()
     end
 
     ui.EndChild()
