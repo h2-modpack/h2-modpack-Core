@@ -41,16 +41,19 @@ local function on_ready()
     -- 1. Import and run discovery (discovery.lua self-runs on import)
     import 'discovery.lua'
 
-    -- 2. HUD system (hash + mod mark)
+    -- 2. Config hash (pure logic, no engine deps beyond Discovery)
+    import 'hash.lua'
+
+    -- 3. HUD system (mod mark display)
     import 'hud.lua'
 
-    -- 3. UI theme (colors, layout constants, helpers)
+    -- 4. UI theme (colors, layout constants, helpers)
     import 'ui_theme.lua'
 
-    -- 4. UI system
+    -- 5. UI system
     import 'ui.lua'
 
-    -- 5. Set initial mod marker
+    -- 6. Set initial mod marker
     if config.ModEnabled then
         Core.SetModMarker(true)
     end
@@ -60,6 +63,7 @@ local function on_reload()
     import_as_fallback(rom.game)
     import 'def.lua'
     import 'discovery.lua'
+    import 'hash.lua'
     import 'hud.lua'
     import 'ui_theme.lua'
     import 'ui.lua'
