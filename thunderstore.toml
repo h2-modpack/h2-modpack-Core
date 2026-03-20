@@ -7,7 +7,7 @@ namespace = "adamant"
 name = "Modpack_Core"
 versionNumber = "1.0.0"
 description = "Coordinator for the adamant H2 modpack - unified UI, profiles, and config hashing."
-websiteUrl = "https://github.com/maybe-adamant/h2-modpack-Core"
+websiteUrl = "https://github.com/h2-modpack/h2-modpack-Core"
 containsNsfwContent = false
 
 [package.dependencies]
