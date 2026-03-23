@@ -73,18 +73,15 @@ function Hash.GetConfigHash(source)
         end
     end
 
-    -- Boolean flags in discovery order (category order, then module order within)
-    for _, cat in ipairs(Core.Discovery.categories) do
-        local modules = Core.Discovery.byCategory[cat.key] or {}
-        for _, m in ipairs(modules) do
-            local enabled
-            if source then
-                enabled = source.modules and source.modules[m.id]
-            else
-                enabled = Core.Discovery.isModuleEnabled(m)
-            end
-            addBits(enabled and 1 or 0, 1)
+    -- Boolean flags in MODULE_ORDER (registry order determines bit positions)
+    for _, m in ipairs(Core.Discovery.modules) do
+        local enabled
+        if source then
+            enabled = source.modules and source.modules[m.id]
+        else
+            enabled = Core.Discovery.isModuleEnabled(m)
         end
+        addBits(enabled and 1 or 0, 1)
     end
 
     -- Flush partial bool chunk
@@ -171,13 +168,10 @@ function Hash.ApplyConfigHash(hash)
         return val
     end
 
-    -- Boolean flags in discovery order — write directly to module configs
-    for _, cat in ipairs(Core.Discovery.categories) do
-        local modules = Core.Discovery.byCategory[cat.key] or {}
-        for _, m in ipairs(modules) do
-            local enabled = readBits(1) == 1
-            Core.Discovery.setModuleEnabled(m, enabled)
-        end
+    -- Boolean flags in MODULE_ORDER — write directly to module configs
+    for _, m in ipairs(Core.Discovery.modules) do
+        local enabled = readBits(1) == 1
+        Core.Discovery.setModuleEnabled(m, enabled)
     end
 
     -- Skip remaining bits in last bool chunk

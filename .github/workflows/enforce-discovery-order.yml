@@ -23,14 +23,14 @@ jobs:
           OLD_REG="main_branch/src/discovery_registry.lua"
           NEW_REG="src/discovery_registry.lua"
 
-          # 1. Extract just the ordered 'modName' lines from the old, approved registry
-          grep "modName" "$OLD_REG" > old_sequence.txt
-          
+          # 1. Extract just the ordered module name lines from the old, approved registry
+          grep '"adamant-' "$OLD_REG" > old_sequence.txt
+
           # 2. Count exactly how many modules were in the old sequence
           OLD_COUNT=$(wc -l < old_sequence.txt)
-          
+
           # 3. Extract the exact same number of mod lines from the top of the NEW registry
-          grep "modName" "$NEW_REG" | head -n $OLD_COUNT > new_sequence_top.txt
+          grep '"adamant-' "$NEW_REG" | head -n $OLD_COUNT > new_sequence_top.txt
           
           # 4. Compare them. If they aren't completely identical, the sequence was broken!
           if ! cmp -s old_sequence.txt new_sequence_top.txt; then

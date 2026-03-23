@@ -131,7 +131,7 @@ local function RebuildSlotLabels()
 end
 
 local function RebuildBugFixStatus()
-    local modules = Discovery.byCategory["BugFixes"] or {}
+    local modules = Discovery.byCategory["Bug Fixes"] or {}
     if #modules == 0 then
         bugFixStatusText = "N/A"
         bugFixStatusColor = colors.textDisabled
@@ -235,7 +235,7 @@ local function LoadProfile(hash)
 end
 
 local function SetBugFixes(flag)
-    local modules = Discovery.byCategory["BugFixes"] or {}
+    local modules = Discovery.byCategory["Bug Fixes"] or {}
     for _, m in ipairs(modules) do
         staging.modules[m.id] = flag
         Discovery.setModuleEnabled(m, flag)
@@ -381,7 +381,7 @@ local function DrawQuickSetup()
     ui.Spacing()
 
     -- Bug fix bulk toggles
-    if Discovery.byCategory["BugFixes"] then
+    if Discovery.byCategory["Bug Fixes"] then
         DrawColoredText(colors.info, "Toggle all bug fixes at once. Go to the Bug Fixes tab for individual control.")
         if bugFixStatusDirty then RebuildBugFixStatus() end
         DrawColoredText(colors.text, "Current Status: ")

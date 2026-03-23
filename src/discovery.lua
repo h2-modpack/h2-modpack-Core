@@ -35,24 +35,23 @@ Discovery.categoryLayouts = {}  -- category key -> UI layout (groups)
 function Discovery.run()
     local mods = rom.mods
 
-    -- Track category discovery order
     local categorySet = {}
-    local categoryLabels = {}
 
-    for _, entry in ipairs(MODULE_ORDER) do
-        local mod = mods[entry.modName]
+    for _, modName in ipairs(MODULE_ORDER) do
+        local mod = mods[modName]
         if mod and mod.definition then
             local def = mod.definition
             if not def.id or not def.apply or not def.revert then
-                lib.warn("Skipping " .. entry.modName .. ": missing id, apply, or revert")
+                lib.warn("Skipping " .. modName .. ": missing id, apply, or revert")
             else
+                local cat = def.category or "General"
                 local module = {
-                    modName    = entry.modName,
+                    modName    = modName,
                     mod        = mod,
                     definition = def,
                     id         = def.id,
                     name       = def.name,
-                    category   = entry.category,
+                    category   = cat,
                     group      = def.group or "General",
                     tooltip    = def.tooltip or "",
                     default    = def.default,
@@ -63,20 +62,13 @@ function Discovery.run()
                 Discovery.modulesById[def.id] = module
                 if def.options and #def.options > 0 then
                     table.insert(Discovery.modulesWithOptions, module)
-                    lib.validateSchema(def.options, entry.modName)
+                    lib.validateSchema(def.options, modName)
                 end
 
-                -- Category tracking
-                local cat = entry.category
+                -- Category tracking (category string is both key and display label)
                 if not categorySet[cat] then
                     categorySet[cat] = true
-                    table.insert(Discovery.categories, {
-                        key = cat,
-                        label = entry.categoryLabel or categoryLabels[cat] or cat,
-                    })
-                end
-                if entry.categoryLabel then
-                    categoryLabels[cat] = entry.categoryLabel
+                    table.insert(Discovery.categories, { key = cat, label = cat })
                 end
 
                 Discovery.byCategory[cat] = Discovery.byCategory[cat] or {}
@@ -86,18 +78,18 @@ function Discovery.run()
     end
 
     -- Discover special modules (ordered)
-    for _, entry in ipairs(SPECIAL_MODULES) do
-        local mod = mods[entry.modName]
+    for _, modName in ipairs(SPECIAL_MODULES) do
+        local mod = mods[modName]
         if mod and mod.definition then
             local def = mod.definition
             if not def.name or not def.apply or not def.revert then
-                lib.warn("Skipping special " .. entry.modName .. ": missing name, apply, or revert")
+                lib.warn("Skipping special " .. modName .. ": missing name, apply, or revert")
             else
                 if def.stateSchema then
-                    lib.validateSchema(def.stateSchema, entry.modName)
+                    lib.validateSchema(def.stateSchema, modName)
                 end
                 table.insert(Discovery.specials, {
-                    modName     = entry.modName,
+                    modName     = modName,
                     mod         = mod,
                     definition  = def,
                     stateSchema = def.stateSchema,  -- nil if module has no declarative state
