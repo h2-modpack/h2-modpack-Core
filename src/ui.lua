@@ -206,18 +206,6 @@ local function ToggleSpecial(special, enabled)
     Core.UpdateHash()
 end
 
---- Generic callback passed to special modules' Draw* functions.
---- The module manages its own staging; we just tell it to sync and refresh hash.
-local function MakeSpecialOnChanged(special)
-    return function()
-        if special.mod.SyncToConfig then
-            special.mod.SyncToConfig()
-        end
-        InvalidateHash()
-        Core.UpdateHash()
-    end
-end
-
 
 --- Load a profile hash: decode, apply to all module configs, re-snapshot.
 local function LoadProfile(hash)
@@ -281,7 +269,7 @@ local function DrawCheckboxGroup(layoutData, category)
                         ui.Indent()
                         local opts = staging.options[m.id] or {}
                         for _, opt in ipairs(m.options) do
-                            ui.PushID(m.id .. "_" .. opt.configKey)
+                            ui.PushID(opt._pushId)
                             local newVal, newChg = lib.drawField(ui, opt, opts[opt.configKey], ui.GetWindowWidth() * FIELD_MEDIUM)
                             if newChg then
                                 ChangeOption(m, opt.configKey, newVal)
@@ -308,27 +296,40 @@ end
 
 local selectedTab = "Quick Setup"
 
+local cachedTabList = nil
+
 local function BuildTabList()
-    local tabs = { "Quick Setup" }
+    if cachedTabList then return cachedTabList end
+    cachedTabList = { "Quick Setup" }
     -- Special module tabs
     for _, special in ipairs(Discovery.specials) do
         local label = special.definition.tabLabel or special.definition.name
-        table.insert(tabs, label)
+        table.insert(cachedTabList, label)
     end
     -- Category tabs
     for _, cat in ipairs(Discovery.categories) do
-        table.insert(tabs, cat.label)
+        table.insert(cachedTabList, cat.label)
     end
-    table.insert(tabs, "Profiles")
-    table.insert(tabs, "Dev")
-    return tabs
+    table.insert(cachedTabList, "Profiles")
+    table.insert(cachedTabList, "Dev")
+    return cachedTabList
 end
 
 -- Build lookup: tab label -> special entry
 local specialByTabLabel = {}
+
 for _, special in ipairs(Discovery.specials) do
     local label = special.definition.tabLabel or special.definition.name
     specialByTabLabel[label] = special
+    
+    -- Cache the onChanged callback so we don't allocate closures in the render loop
+    special._onChangedCb = function()
+        if special.mod.SyncToConfig then
+            special.mod.SyncToConfig()
+        end
+        InvalidateHash()
+        Core.UpdateHash()
+    end
 end
 
 -- =============================================================================
@@ -401,7 +402,7 @@ local function DrawQuickSetup()
         if staging.specials[special.modName] and special.mod.DrawQuickContent then
             ui.Separator()
             ui.Spacing()
-            special.mod.DrawQuickContent(ui, MakeSpecialOnChanged(special), T)
+            special.mod.DrawQuickContent(ui, special._onChangedCb, T)
         end
     end
 end
@@ -409,7 +410,7 @@ end
 local function DrawSpecialTab(special)
     -- Enable checkbox (standardized by Core)
     local enabled = staging.specials[special.modName] or false
-    local val, chg = ui.Checkbox("Enable " .. special.definition.name, enabled)
+    local val, chg = ui.Checkbox(special._enableLabel, enabled)
     if chg then
         ToggleSpecial(special, val)
     end
@@ -423,7 +424,7 @@ local function DrawSpecialTab(special)
 
     -- Delegate tab content to the module
     if special.mod.DrawTab then
-        special.mod.DrawTab(ui, MakeSpecialOnChanged(special), T)
+        special.mod.DrawTab(ui, special._onChangedCb, T)
     end
 end
 

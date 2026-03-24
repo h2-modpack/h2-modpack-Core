@@ -32,42 +32,27 @@ Core = {}
 -- LIFECYCLE
 -- =============================================================================
 
-local function on_ready()
-
+local function import_modules()
     import_as_fallback(rom.game)
-
-    -- 0. Fixed definitions (constants, default profiles)
     import 'def.lua'
-
-    -- 1. Import and run discovery (discovery.lua self-runs on import)
+    import 'discovery_registry.lua'
     import 'discovery.lua'
-
-    -- 2. Config hash (pure logic, no engine deps beyond Discovery)
     import 'hash.lua'
-    -- 3. UI theme (colors, layout constants, helpers)
     import 'ui_theme.lua'
-
-    -- 4. HUD system (mod mark display)
     import 'hud.lua'
-
-
-    -- 5. UI system
     import 'ui.lua'
+end
 
-    -- 6. Set initial mod marker
+local function on_ready()
+    import_modules()
+    -- Set initial mod marker
     if config.ModEnabled then
         Core.SetModMarker(true)
     end
 end
 
 local function on_reload()
-    import_as_fallback(rom.game)
-    import 'def.lua'
-    import 'discovery.lua'
-    import 'hash.lua'
-    import 'ui_theme.lua'
-    import 'hud.lua'
-    import 'ui.lua'
+    import_modules()
 end
 
 local loader = reload.auto_single()

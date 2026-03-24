@@ -62,6 +62,7 @@ function Discovery.run()
                     mod         = mod,
                     definition  = def,
                     stateSchema = def.stateSchema,
+                    _enableLabel = "Enable " .. tostring(def.name),
                 })
             end
         else
@@ -87,6 +88,9 @@ function Discovery.run()
                 if def.options and #def.options > 0 then
                     table.insert(Discovery.modulesWithOptions, module)
                     lib.validateSchema(def.options, modName)
+                    for _, opt in ipairs(def.options) do
+                        opt._pushId = def.id .. "_" .. tostring(opt.configKey)
+                    end
                 end
 
                 if not categorySet[cat] then

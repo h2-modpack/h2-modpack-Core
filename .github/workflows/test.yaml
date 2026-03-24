@@ -21,13 +21,11 @@ jobs:
           repository: h2-modpack/h2-modpack-Lib
           path: adamant-modpack-Lib
 
-      - name: Install Lua 5.1
-        run: sudo apt-get install -y lua5.1
+      - name: Install Lua 5.1 & Luarocks
+        run: sudo apt-get install -y lua5.1 luarocks
 
       - name: Install LuaUnit
-        run: |
-          sudo mkdir -p /usr/local/share/lua/5.1
-          curl -sL https://raw.githubusercontent.com/bluebird75/luaunit/master/luaunit.lua | sudo tee /usr/local/share/lua/5.1/luaunit.lua > /dev/null
+        run: sudo luarocks install luaunit
 
       - name: Run tests
         working-directory: adamant-modpack-Core
