@@ -14,14 +14,14 @@ local lib = rom.mods['adamant-Modpack_Lib']
 -- -------------------------------------------------------------------------
 
 -- Populated by Discovery.run()
-Discovery.modules = {}          -- ordered list of discovered boolean modules
-Discovery.modulesById = {}      -- id -> module entry
+Discovery.modules = {}            -- ordered list of discovered boolean modules
+Discovery.modulesById = {}        -- id -> module entry
 Discovery.modulesWithOptions = {} -- ordered list of modules that have definition.options
-Discovery.specials = {}         -- ordered list of discovered special modules
+Discovery.specials = {}           -- ordered list of discovered special modules
 
-Discovery.categories = {}       -- ordered list of { key, label }
-Discovery.byCategory = {}       -- category key -> ordered list of modules
-Discovery.categoryLayouts = {}  -- category key -> UI layout (groups)
+Discovery.categories = {}         -- ordered list of { key, label }
+Discovery.byCategory = {}         -- category key -> ordered list of modules
+Discovery.categoryLayouts = {}    -- category key -> UI layout (groups)
 
 -- -------------------------------------------------------------------------
 -- DISCOVERY
@@ -72,17 +72,17 @@ function Discovery.run()
             else
                 local cat = def.category or "General"
                 local module = {
-                    modName      = modName,
-                    mod          = mod,
-                    definition   = def,
-                    id           = def.id,
-                    name         = def.name,
-                    category     = cat,
-                    group        = def.group or "General",
-                    tooltip      = def.tooltip or "",
-                    default      = def.default,
-                    options      = def.options,
-                    _debugLabel  = (def.name or def.id) .. "##" .. def.id,
+                    modName     = modName,
+                    mod         = mod,
+                    definition  = def,
+                    id          = def.id,
+                    name        = def.name,
+                    category    = cat,
+                    group       = def.group or "General",
+                    tooltip     = def.tooltip or "",
+                    default     = def.default,
+                    options     = def.options,
+                    _debugLabel = (def.name or def.id) .. "##" .. def.id,
                 }
 
                 table.insert(Discovery.modules, module)
@@ -92,7 +92,9 @@ function Discovery.run()
                     local validOptions = {}
                     for _, opt in ipairs(def.options) do
                         if type(opt.configKey) == "table" then
-                            lib.warn(modName .. ": option configKey is a table -- table-path keys are only valid in stateSchema (special modules). Use a flat string key in def.options. Option skipped.")
+                            lib.warn(modName ..
+                            ": option configKey is a table -- table-path keys are only valid in stateSchema (special modules). " ..
+                            "Use a flat string key in def.options. Option skipped.")
                         else
                             opt._pushId = def.id .. "_" .. tostring(opt.configKey)
                             table.insert(validOptions, opt)
@@ -127,7 +129,11 @@ function Discovery.run()
         if labelCount[label] > 1 then
             labelIndex[label] = (labelIndex[label] or 0) + 1
             special._tabLabel = label .. " (" .. labelIndex[label] .. ")"
-            lib.warn(special.modName .. ": tabLabel '" .. label .. "' is shared by multiple specials. Rename tabLabel or definition.name to resolve. Rendering as '" .. special._tabLabel .. "'.")
+            lib.warn(special.modName ..
+                ": tabLabel '" ..
+                label ..
+                "' is shared by multiple specials. Rename tabLabel or definition.name to resolve. Rendering as '" ..
+                special._tabLabel .. "'.")
         else
             special._tabLabel = label
         end
@@ -158,10 +164,10 @@ function Discovery.buildLayout(category)
             table.insert(groupOrder, g)
         end
         table.insert(groups[g].Items, {
-            Key       = m.id,
-            ModName   = m.modName,
-            Name      = m.name,
-            Tooltip   = m.tooltip,
+            Key     = m.id,
+            ModName = m.modName,
+            Name    = m.name,
+            Tooltip = m.tooltip,
         })
     end
 
