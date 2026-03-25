@@ -22,7 +22,7 @@ Files are imported sequentially in main.lua and share state via the `Core` names
 
 ### Discovery (discovery.lua)
 
-Auto-discovers all installed modules that opt in via `definition.modpackModule = true`. No registry required — modules are picked up automatically on load.
+Auto-discovers all installed modules that opt in via `definition.modpack = "modpack-namespace"`. No registry required — modules are picked up automatically on load.
 
 - Regular modules: `def.special` is nil/false
 - Special modules: `def.special = true`

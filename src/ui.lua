@@ -176,7 +176,7 @@ local function SetModuleState(module, state)
     local fn = state and module.definition.apply or module.definition.revert
     local ok, err = pcall(fn)
     if not ok then
-        lib.warn((module.modName or "unknown") .. " " .. (state and "apply" or "revert") .. " failed: " .. tostring(err))
+        lib.warn(Core._pack, config.DebugMode,(module.modName or "unknown") .. " " .. (state and "apply" or "revert") .. " failed: " .. tostring(err))
     end
 end
 
@@ -613,12 +613,25 @@ local function DrawDev()
     ui.Spacing()
 
     -- Framework debug: gates lib.warn calls from schema validation, discovery, etc.
-    local fwVal, fwChg = ui.Checkbox("Framework Debug", lib.config.DebugMode == true)
+    -- Read/write directly from config — intentional exception to the staging pattern.
+    -- These flags have no external writers (no profile load),
+    -- so staging would add complexity with no correctness benefit.
+    -- lib.config.DebugMode is shared across packs: direct reads reflect changes from
+    -- other pack Dev tabs immediately, whereas staging would go stale.
+    local fwVal, fwChg = ui.Checkbox("Framework Debug", config.DebugMode == true)
     if fwChg then
-        lib.config.DebugMode = fwVal
+        config.DebugMode = fwVal
     end
     if ui.IsItemHovered() then
         ui.SetTooltip("Print diagnostic warnings for schema validation, discovery errors, and other framework events.")
+    end
+
+    local libVal, libChg = ui.Checkbox("Lib Debug", lib.config.DebugMode == true)
+    if libChg then
+        lib.config.DebugMode = libVal
+    end
+    if ui.IsItemHovered() then
+        ui.SetTooltip("Print lib-internal diagnostic warnings (schema errors, unknown field types). Shared across all packs.")
     end
 
     ui.Spacing()

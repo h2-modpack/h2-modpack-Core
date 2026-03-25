@@ -26,7 +26,7 @@ public.config = config
 -- Shared namespace for cross-file communication within this plugin.
 -- All imported files attach to Core and read from Core.Discovery.
 Core = {}
-
+Core._pack = "h2-modpack"
 -- =============================================================================
 -- LIFECYCLE
 -- =============================================================================

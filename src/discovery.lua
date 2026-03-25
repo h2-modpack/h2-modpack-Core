@@ -1,7 +1,7 @@
 -- =============================================================================
 -- MODULE DISCOVERY
 -- =============================================================================
--- Auto-discovers all installed modules that opt in via definition.modpackModule = true,.
+-- Auto-discovers all installed modules that opt in via definition.modpack = "modpack-namespace",.
 -- Regular modules: definition.special is nil/false.
 -- Special modules: definition.special = true.
 -- Modules are sorted alphabetically by display name within each category.
@@ -33,7 +33,8 @@ function Discovery.run()
     -- Collect all opted-in modules
     local found = {}
     for modName, mod in pairs(mods) do
-        if type(mod) == "table" and mod.definition and mod.definition.modpackModule then
+        if type(mod) == "table" and mod.definition and 
+        mod.definition.modpack and mod.definition.modpack == Core._pack then
             table.insert(found, { modName = modName, mod = mod, def = mod.definition })
         end
     end
@@ -52,7 +53,7 @@ function Discovery.run()
 
         if def.special then
             if not def.name or not def.apply or not def.revert then
-                lib.warn("Skipping special " .. modName .. ": missing name, apply, or revert")
+                lib.warn(Core._pack, config.DebugMode,"Skipping special " .. modName .. ": missing name, apply, or revert")
             else
                 if def.stateSchema then
                     lib.validateSchema(def.stateSchema, modName)
@@ -68,7 +69,7 @@ function Discovery.run()
             end
         else
             if not def.id or not def.apply or not def.revert then
-                lib.warn("Skipping " .. modName .. ": missing id, apply, or revert")
+                lib.warn(Core._pack, config.DebugMode,"Skipping " .. modName .. ": missing id, apply, or revert")
             else
                 local cat = def.category or "General"
                 local module = {
@@ -92,7 +93,7 @@ function Discovery.run()
                     local validOptions = {}
                     for _, opt in ipairs(def.options) do
                         if type(opt.configKey) == "table" then
-                            lib.warn(modName ..
+                            lib.warn(Core._pack, config.DebugMode,modName ..
                             ": option configKey is a table -- table-path keys are only valid in stateSchema (special modules). " ..
                             "Use a flat string key in def.options. Option skipped.")
                         else
@@ -129,7 +130,7 @@ function Discovery.run()
         if labelCount[label] > 1 then
             labelIndex[label] = (labelIndex[label] or 0) + 1
             special._tabLabel = label .. " (" .. labelIndex[label] .. ")"
-            lib.warn(special.modName ..
+            lib.warn(Core._pack, config.DebugMode,special.modName ..
                 ": tabLabel '" ..
                 label ..
                 "' is shared by multiple specials. Rename tabLabel or definition.name to resolve. Rendering as '" ..
@@ -195,7 +196,7 @@ function Discovery.setModuleEnabled(module, enabled)
     local fn = enabled and module.definition.apply or module.definition.revert
     local ok, err = pcall(fn)
     if not ok then
-        lib.warn(module.modName .. " " .. (enabled and "enable" or "disable") .. " failed: " .. tostring(err))
+        lib.warn(Core._pack, config.DebugMode,module.modName .. " " .. (enabled and "enable" or "disable") .. " failed: " .. tostring(err))
     end
 end
 
@@ -220,7 +221,7 @@ function Discovery.setSpecialEnabled(special, enabled)
     local fn = enabled and special.definition.apply or special.definition.revert
     local ok, err = pcall(fn)
     if not ok then
-        lib.warn(special.modName .. " " .. (enabled and "enable" or "disable") .. " failed: " .. tostring(err))
+        lib.warn(Core._pack, config.DebugMode,special.modName .. " " .. (enabled and "enable" or "disable") .. " failed: " .. tostring(err))
     end
 end
 

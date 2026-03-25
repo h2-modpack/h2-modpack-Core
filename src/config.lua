@@ -1,6 +1,7 @@
 ---@meta adamant-config-Core
 return {
-    ModEnabled = true,
+    ModEnabled  = true,
+    DebugMode   = false,
 
     Profiles =
     {

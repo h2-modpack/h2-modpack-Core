@@ -198,20 +198,20 @@ end
 --- @return boolean success
 function Hash.ApplyConfigHash(hash)
     if hash == nil or hash == "" then
-        lib.warn("ApplyConfigHash: empty hash")
+        lib.warn(Core._pack, config.DebugMode,"ApplyConfigHash: empty hash")
         return false
     end
 
     local kv = Deserialize(hash)
 
     if kv["_v"] == nil then
-        lib.warn("ApplyConfigHash: unrecognized format (missing version key) — hash may be from an older format")
+        lib.warn(Core._pack, config.DebugMode,"ApplyConfigHash: unrecognized format (missing version key) — hash may be from an older format")
         return false
     end
 
     local version = tonumber(kv["_v"]) or 1
     if version > HASH_VERSION then
-        lib.warn("ApplyConfigHash: hash version " .. version .. " is newer than supported (" .. HASH_VERSION .. ") — some settings may not apply")
+        lib.warn(Core._pack, config.DebugMode,"ApplyConfigHash: hash version " .. version .. " is newer than supported (" .. HASH_VERSION .. ") — some settings may not apply")
     end
 
     -- Boolean module enabled states
