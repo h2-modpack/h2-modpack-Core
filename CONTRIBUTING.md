@@ -1,103 +1,32 @@
-# Contributing to adamant-Core
+# Contributing to adamant-Modpack_Core
 
-Coordinator that discovers installed adamant modules, provides a unified UI, and manages config hashing and profiles. Depends on adamant-Lib.
+Thin coordinator for the adamant H2 modpack. Owns pack identity, config, and default profiles — delegates all orchestration to `adamant-Modpack_Framework`.
 
 ## Architecture
 
 ```
 src/
-  main.lua               -- entry point, lifecycle, imports
-  def.lua                -- shared constants (NUM_PROFILES, defaultProfiles)
-  discovery.lua          -- auto-discovers opted-in modules, state accessors
-  hash.lua               -- pure config hash encoding/decoding (no engine deps)
-  hud.lua                -- HUD mod marker display (reads Core.Hash)
-  ui_theme.lua           -- colors, layout constants, theme push/pop
-  ui.lua                 -- staging, tabs, window rendering, toggle handlers
-  config.lua             -- Chalk config schema (ModEnabled, DebugMode, Profiles)
+  main.lua    -- ENVY wiring, config, def, Framework.init call
+config.lua    -- Chalk config schema (ModEnabled, DebugMode, Profiles)
 ```
 
-Files are imported sequentially in main.lua and share state via the `Core` namespace. Each file attaches its exports (e.g., `Core.Discovery`, `Core.Theme`, `Core.Def`).
+Core has no other source files. All discovery, hashing, HUD, and UI logic lives in [adamant-Modpack_Framework](https://github.com/h2-modpack/adamant-modpack-Framework). See its [CONTRIBUTING.md](https://github.com/h2-modpack/adamant-modpack-Framework/blob/main/CONTRIBUTING.md) for architecture, key systems, and guidelines.
 
-## Key systems
+## What Core owns
 
-### Discovery (discovery.lua)
+**`packId`** — `"h2-modpack"`. This is the discovery filter: only modules with `definition.modpack = "h2-modpack"` are picked up.
 
-Auto-discovers all installed modules that opt in via `definition.modpack = "modpack-namespace"`. No registry required — modules are picked up automatically on load.
+**`windowTitle`** — `"Speedrun Modpack"`. Displayed as the ImGui window title.
 
-- Regular modules: `def.special` is nil/false
-- Special modules: `def.special = true`
-- All metadata (id, name, category, group, tooltip, default) lives in each module's `public.definition`
-- Modules are sorted alphabetically by display name; categories and groups are also sorted alphabetically
+**`def.defaultProfiles`** — The three shipped presets (AnyFear, HighFear, RTA). To add or update a preset, edit `def` in `src/main.lua`. Get the hash string from the Profiles tab export field in-game.
 
-A new category tab is created automatically the first time a module with an unseen `def.category` is discovered. No Core changes needed to add a new module or category.
+**`config.lua`** — Chalk schema: `ModEnabled`, `DebugMode`, `Profiles` array. The Profiles array length determines `def.NUM_PROFILES` and must match the number of slots rendered in the UI.
 
-### Config hash (hash.lua)
+## No tests
 
-Pure encoding logic with no engine dependencies — fully testable in standalone Lua. Uses a **key-value canonical string** format:
+Tests live in `adamant-Modpack_Framework`. Run them from there:
 
 ```
-ModId=1|ModId.configKey=value|adamant-SpecialName.configKey=value
+cd adamant-modpack-Framework
+lua5.1 tests/all.lua
 ```
-
-- Only non-default values are encoded — adding new fields with defaults is non-breaking
-- Keys are sorted alphabetically for stable output
-- Value encoding is delegated to `lib.FieldTypes[field.type].toHash/fromHash`
-- An empty string means all values are at their defaults
-
-`GetConfigHash(source)` returns `canonical, fingerprint` — the canonical string is used for import/export, the 12-char base62 fingerprint is shown on the HUD. `ApplyConfigHash(hash)` decodes and applies a canonical string; unknown keys are ignored and missing keys reset to defaults.
-
-`hud.lua` handles only the HUD marker display — it reads `Core.Hash` but contains no encoding logic.
-
-### UI (ui.lua)
-
-Uses a **staging table** -- a plain Lua cache mirroring Chalk configs for fast per-frame reads. Chalk is only written when the user makes a change.
-
-Key handlers:
-
-| Function | Purpose |
-|---|---|
-| `ToggleModule(module, val)` | Enable/disable a boolean module |
-| `ChangeOption(module, key, val)` | Change an inline option (triggers revert + apply) |
-| `ToggleSpecial(special, val)` | Enable/disable a special module |
-| `SetModuleState(module, state)` | Game-side only apply/revert (no Chalk, no staging) |
-| `LoadProfile(hash)` | Apply a hash string to all modules |
-| `SetBugFixes(val)` | Bulk toggle all bug fix modules |
-
-### Dev tab (ui.lua — `DrawDev`)
-
-Two independent debug controls:
-
-| Control | What it gates | Who controls it |
-|---|---|---|
-| Framework Debug | `lib.warn(msg)` calls — schema errors, discovery warnings, unknown field types | `lib.config.DebugMode` |
-| Per-module Debug | `lib.log(name, config.DebugMode, msg)` calls in each module's own code | Each module's `config.DebugMode` |
-
-Core's Dev tab writes `lib.config.DebugMode` for the framework toggle, and writes each module/special's `config.DebugMode` via `Discovery.setDebugEnabled(entry, val)` for per-module toggles. The two flags are independent — enabling framework debug does not enable module debug and vice versa.
-
-### Theme (ui_theme.lua)
-
-Declarative colors and layout constants. Colors are defined as a data-driven table so push/pop stay in sync automatically.
-
-### Definitions (def.lua)
-
-Shared constants: `Core.Def.NUM_PROFILES` and `Core.Def.defaultProfiles`.
-
-## How-tos
-
-### Adding a new profile preset
-
-Add to `Core.Def.defaultProfiles` in def.lua. Get the hash from the Profiles tab export field in-game.
-
-### Adding a new category
-
-Set `def.category` to a new string in the module's `public.definition`. The tab appears automatically — no registry change needed.
-
-## Guidelines
-
-- **Never rename `def.id` or `field.configKey` after release** — these are hash keys; renaming silently resets that field to default for anyone with an existing profile
-- **`"Bug Fixes"` is a reserved category string** — modules using this exact string get a bulk enable/disable toggle in the Quick Setup tab automatically. Spelling variations (`"Bugfixes"`, `"Bug Fix"`) create a separate tab and do not get the bulk toggle
-- All module apply/revert calls go through pcall — use `lib.warn` for framework errors, never crash
-- UI reads from staging, not Chalk — always keep staging in sync
-- Theme is data-driven — don't hardcode counts or layout numbers
-- **`def.options` configKeys must be flat strings** — table-path keys (e.g. `{"Parent", "Child"}`) are only valid in `def.stateSchema` (special modules). `getOptionValue`/`setOptionValue` use raw table indexing; a table key creates a garbage entry under a unique reference, silently failing to read or write. Discovery warns and skips any option with a table configKey. If your config needs nested structure, the module should be a special module with its own staging.
-

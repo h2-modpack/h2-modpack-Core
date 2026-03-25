@@ -1,4 +1,4 @@
----@meta adamant-config-Core
+---@meta adamant-configcoordinator
 return {
     ModEnabled  = true,
     DebugMode   = false,

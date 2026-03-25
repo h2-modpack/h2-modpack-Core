@@ -7,7 +7,7 @@ namespace = "adamant"
 name = "Modpack_Core"
 versionNumber = "1.0.0"
 description = "Coordinator for the adamant H2 modpack - unified UI, profiles, and config hashing."
-websiteUrl = "https://github.com/h2-modpack/h2-modpack-Core"
+websiteUrl = "https://github.com/h2-modpack/h2-modpack-coordinator"
 containsNsfwContent = false
 
 [package.dependencies]
@@ -17,6 +17,7 @@ SGG_Modding-Chalk = "2.1.1"
 SGG_Modding-ReLoad = "1.0.2"
 SGG_Modding-ModUtil = "4.0.1"
 adamant-Modpack_Lib = "1.0.0"
+adamant-Modpack_Framework = "1.0.0"
 adamant-BraidFix = "1.0.0"
 adamant-CardioTorchFix = "1.0.0"
 adamant-CharybdisBehavior = "1.0.0"

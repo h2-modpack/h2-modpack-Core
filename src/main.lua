@@ -1,13 +1,8 @@
 -- =============================================================================
--- ADAMANT-CORE: Modular Coordinator
+-- ADAMANT-COORDINATOR: Modpack Coordinator
 -- =============================================================================
--- Discovers installed adamant-* standalone modules and provides:
---   - Unified ImGui UI (categories, groups, profiles, hammers)
---   - Config hashing and HUD mod mark
---   - Profile save/load/import/export
---
--- Each standalone module manages its own hooks, backup/restore, and config.
--- The coordinator orchestrates enable/disable and renders the unified UI.
+-- Thin coordinator: wires globals, owns config and def, delegates everything
+-- else to adamant-Modpack_Framework.
 
 local mods = rom.mods
 mods['SGG_Modding-ENVY'].auto()
@@ -17,47 +12,38 @@ rom = rom
 _PLUGIN = _PLUGIN
 game = rom.game
 modutil = mods['SGG_Modding-ModUtil']
-chalk = mods['SGG_Modding-Chalk']
-reload = mods['SGG_Modding-ReLoad']
+chalk   = mods['SGG_Modding-Chalk']
+reload  = mods['SGG_Modding-ReLoad']
 
 config = chalk.auto('config.lua')
 public.config = config
 
--- Shared namespace for cross-file communication within this plugin.
--- All imported files attach to Core and read from Core.Discovery.
-Core = {}
-Core._pack = "h2-modpack"
--- =============================================================================
--- LIFECYCLE
--- =============================================================================
+local def = {
+    NUM_PROFILES    = #config.Profiles,
+    defaultProfiles = {
+        { Name = "AnyFear",  Hash = "1AfB0V.3", Tooltip = "RTA Disabled. Arachne Pity Disabled" },
+        { Name = "HighFear", Hash = "1AfB0t.3", Tooltip = "RTA Disabled. Arachne Spawn Forced" },
+        { Name = "RTA",      Hash = "1AfB20.3", Tooltip = "RTA Enabled. Arachne Pity Enabled. Medea/Arachne Spawns Not Forced" },
+    },
+}
 
-local function import_modules()
-    import_as_fallback(rom.game)
-    import 'def.lua'
-    import 'discovery.lua'
-    import 'hash.lua'
-    import 'ui_theme.lua'
-    import 'hud.lua'
-    import 'ui.lua'
-end
+local PACK_ID = "h2-modpack"
 
-local function on_ready()
-    import_modules()
-    -- Set initial mod marker
-    if config.ModEnabled then
-        Core.SetModMarker(true)
-    end
-end
-
-local function on_reload()
-    import_modules()
-    if config.ModEnabled then
-        Core.SetModMarker(true)
-    end
+local function init()
+    local Framework = mods['adamant-Modpack_Framework']
+    Framework.init({
+        packId      = PACK_ID,
+        windowTitle = "Speedrun Modpack",
+        config      = config,
+        def         = def,
+        modutil     = modutil,
+    })
 end
 
 local loader = reload.auto_single()
-
 modutil.once_loaded.game(function()
-    loader.load(on_ready, on_reload)
+    local Framework = mods['adamant-Modpack_Framework']
+    rom.gui.add_imgui(Framework.getRenderer(PACK_ID))
+    rom.gui.add_to_menu_bar(Framework.getMenuBar(PACK_ID))
+    loader.load(init, init)
 end)
